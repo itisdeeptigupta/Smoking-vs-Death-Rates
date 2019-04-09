@@ -1,0 +1,271 @@
+---
+title: "SmokingAnalysis"
+author: "Deepti"
+date: "November 15, 2018"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## STAGE 1
+
+Loading and Pre processing of the data
+
+```{r, results="hide"}
+
+help(setwd)
+setwd("C:/Study/510-PrinciplesAndApplicationsII/Project")
+
+#install.packages("readxl")
+#install.packages("ggpubr")
+#install.packages("car")
+#install.packages("moments")
+#install.packages("ggplot2")
+#install.packages("FrF2")
+#install.packages("nlme")
+
+library(readxl)
+SmkData <- read_excel("smoking.xlsx")
+
+summary(SmkData)
+str(SmkData)
+
+colnames(SmkData) <- c("Order", "SmokingStatus", "AgeClassification", "DeathStatus", "NoOfCases" )
+
+SmkData$SmokingStatus <- as.factor(SmkData$SmokingStatus)
+SmkData$AgeClassification <- as.factor(SmkData$AgeClassification)
+SmkData$DeathStatus <- as.factor(SmkData$DeathStatus)
+
+# For death status 
+SmkData_DS0 = data.frame(
+  AgeClassification = c(1,2,3,4,1,2,3,4),
+  SmokingStatus= as.factor(c(0,0,0,0,1,1,1,1)), 
+  NoOfCases = c(20132,21671,19790,16499,39990,32894,20739,11197)
+)
+
+SmkData_DS1 = data.frame(
+  AgeClassification = c(1,2,3,4,1,2,3,4),
+  SmokingStatus= as.factor(c(0,0,0,0,1,1,1,1)), 
+  NoOfCases = c(204,394,488,766,647,857,855,643)
+)
+
+
+range01 <- function(x){(x-min(x))/(max(x)-min(x))}
+SmkData_DS1$NoOfCases_Scaled = range01(SmkData_DS1$NoOfCases)
+
+```
+
+
+Data exploration
+```{r}
+library(ggplot2)
+
+ggSmkData1 <- ggplot(SmkData, aes(x=AgeClassification, y=NoOfCases,fill = SmokingStatus))
+ggSmkData1 + geom_boxplot(show.legend=TRUE)  +
+             scale_x_discrete(labels = c("50-54","55-59","60-64", "64-69")) +
+             scale_fill_discrete(name  ="Smoking Status", breaks = c(0,1), labels=c("Non-Smoker", "Smoker")) +
+             theme_minimal() +
+             ggtitle("Box plot of Death Rate vs Age Classification w.r.t. Smoking Status") +
+             ylab("Death Rate") +
+             xlab("Age Classification (in age groups)")
+
+
+
+ggSmkData2 <- ggplot(SmkData, aes(x=SmokingStatus, y = NoOfCases, fill = AgeClassification) ) 
+ggSmkData2 + geom_bar(stat = "identity",  width = 0.2)+ 
+             theme_minimal() + 
+             scale_x_discrete( labels = c("Non-Smoker","Smoker")) +
+             scale_fill_discrete(name  ="Age\nClassification\n(in age groups)", breaks = c(1,2,3,4), 
+                                 labels=c("50-54","55-59","60-64", "64-69")) +
+            
+             ggtitle("Death rate w.r.t. Smoking Status") + 
+             ylab("Death Rate ") +  
+             xlab("Smoking Status")
+
+
+
+ggSmkData3 <- ggplot(SmkData_DS1, aes(x= AgeClassification, y = NoOfCases_Scaled, color = SmokingStatus, group = as.numeric(SmokingStatus))) 
+ggSmkData3 +  geom_line(stat = "identity") + geom_point() +
+              scale_x_discrete( labels = c("50-54","55-59","60-64", "64-69")) +
+              theme_minimal() +
+              ggtitle("Death rate w.r.t. Age Classification") + 
+              ylab("Death Rate ") +  
+              xlab("Age Classification")
+
+
+
+```
+
+## STAGE 2
+
+Anova and regressions
+```{r}
+
+
+
+# Normality test
+shapiro.test(SmkData_DS1$NoOfCases)   #p-value = 0.5152
+# Concludes that the distribution is normal
+
+
+# Density plot
+plot(density(SmkData_DS1$NoOfCases))
+
+
+# Skew check
+library(moments)
+agostino.test(SmkData_DS1$NoOfCases)   #p-value = 0.389
+# which means non-significant amount of skew
+
+
+# To check the assumption that variances are equal across groups or samples
+bartlett.test(SmkData_DS1$NoOfCases, SmkData_DS1$AgeClassification) #p-value = 0.7865
+bartlett.test(SmkData_DS1$NoOfCases, SmkData_DS1$SmokingStatus) #p-value = 0.3112
+# it concludes that the variances between the two different populations do not differ significantly, good to proceed
+
+
+
+
+# Anova Model
+
+library(car)
+model <- aov(NoOfCases ~ AgeClassification * SmokingStatus,data = SmkData_DS1)
+summary(model)
+## the model suggests that age classification is not signicant in predicting the death rate, the  
+
+
+model_lm <- lm(NoOfCases ~ AgeClassification * SmokingStatus,data = SmkData_DS1)
+summary(model_lm)
+
+SumofSquareError     <- sum( model_lm$resid^2 )
+
+#Residual analysis
+qqnorm(model$residuals)
+qqline(model$residuals)
+shapiro.test(model$residuals) #p-value = 0.2781
+# Residuals are normally distributed
+
+
+```
+
+##STAGE 3
+
+Elective Analysis
+
+```{r}
+# ################################ TEST 1 ##########################################
+# CHI SQUARE
+# The chi-square test evaluates whether the two variables are independent or not
+# Test the hypothesis whether the death rate of men who smoke or not is independent on their age classification at .05 significance level.
+
+SmkData_DS1_ChiSq = data.frame(        # With Death Rate = 1
+  row.names = c(1,2,3,4),
+  SmokingStatus0= c(204,394,488,766), 
+  SmokingStatus1= c(647,857,855,643)
+)
+
+chisq.test(SmkData_DS1_ChiSq)
+
+# Conclusion
+# p-value < 2.2e-16
+# As the p-value is less than the .05 significance level, we reject the null hypothesis and conclude that death rate of men who smoke or not is dependent on their age classification
+
+
+################################# TEST 2 ##########################################
+# Z-score
+
+View(SmkData_DS1)
+ 
+mean_SmkData_DS1 = mean(SmkData_DS1$NoOfCases)
+sd_SmkData_DS1 = sd(SmkData_DS1$NoOfCases)
+
+z_SmkData_DS1 = round((SmkData_DS1$NoOfCases - mean_SmkData_DS1) / sd_SmkData_DS1, 2)
+
+
+# Help text - Age classification (1=50-54, 2=55-59, 3=60-64, 4=65-69)
+# the z-score gives us the following interpretations
+
+# For people who smoked and lie in the first and youngest age group, 50-54 years have a death rate 0.17 standard deviations more than the average 
+
+# For people who smoked and lie in the age group, 55-64 years have the highest death rate 1.08 and 1.07 standard deviations more than the average 
+
+# For people who smoked and lie in the eldest age group, 65-69 years have the lowest death rate 0.16 standard deviations more than the average 
+
+
+
+################################# TEST 3 ##########################################
+# distributions (Normal, not normal)
+
+# Normality test
+shapiro.test(SmkData_DS1$NoOfCases) 
+# Concludes that the distribution is normal
+
+# Density plot
+plot(density(SmkData_DS1$NoOfCases))
+
+
+# Skew check
+library(moments)
+agostino.test(SmkData_DS1$NoOfCases)   #p-value = 0.389
+# which means non-significant amount of skew
+
+# To check the assumption that variances are equal across groups or samples
+bartlett.test(SmkData_DS1$NoOfCases, SmkData_DS1$AgeClassification) #p-value = 0.7865
+bartlett.test(SmkData_DS1$NoOfCases, SmkData_DS1$SmokingStatus) #p-value = 0.3112
+# it concludes that the variances between the two different populations do not differ significantly, good to proceed
+
+
+
+################################# TEST 4 ##########################################
+# Covariance
+
+cov(SmkData_DS1$NoOfCases, as.numeric(SmkData_DS1$SmokingStatus))
+cov(SmkData_DS1$NoOfCases, as.numeric(SmkData_DS1$AgeClassification))
+cor(SmkData_DS1$NoOfCases, as.numeric(SmkData_DS1$SmokingStatus))
+cor(SmkData_DS1$NoOfCases, as.numeric(SmkData_DS1$AgeClassification))
+```
+
+
+##STAGE 4
+
+F Test
+
+```{r}
+
+############################ F Test ############################
+var.test(SmkData_DS1_ChiSq$SmokingStatus0, 
+         SmkData_DS1_ChiSq$SmokingStatus1, ratio = 1, 
+         alternative = c("two.sided"),
+         conf.level = 0.95)
+
+# F-test between 2 normal populations with hypothesis that variances of the 2 populations are equal.
+# Since the p-value = 0.3121, which is much higher than 0.05, the hypothesis that the variances of x and y are equal is accepted.
+
+
+############################ Mean Test ############################
+# Comparing the mean with 
+tapply(SmkData_DS1$NoOfCases, SmkData_DS1$SmokingStatus, mean)
+# it suggests that non-smokers have higher chances of surviving than smokers
+
+tapply(SmkData_DS1$NoOfCases, SmkData_DS1$AgeClassification, mean)
+# There is a clear pattern here. It suggests that with increasing age, your chances of surviving decreasing
+
+
+
+############################ Coefficient ############################
+cor.test(SmkData_DS1$NoOfCases, SmkData_DS1$AgeClassification, 
+           method = "pearson")
+
+cor.test(SmkData_DS1$NoOfCases, as.numeric(SmkData_DS1$SmokingStatus), 
+            method = "pearson")
+
+
+
+############################ P values from z-score ############################
+p_SmkData_DS1 =  round(2*pnorm(-abs(z_SmkData_DS1)),2)
+
+```
